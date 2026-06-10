@@ -10,9 +10,11 @@ import {
   SettingOutlined,
   UserOutlined,
   LogoutOutlined,
-  HistoryOutlined
+  HistoryOutlined,
+  DashboardOutlined
 } from '@ant-design/icons';
 import { useSchedulerStore } from '@/store';
+import Dashboard from '@/pages/Dashboard';
 import ShipList from '@/pages/ShipList';
 import BerthGantt from '@/pages/BerthGantt';
 import ScheduleEdit from '@/pages/ScheduleEdit';
@@ -22,9 +24,14 @@ import ScheduleReview from '@/pages/ScheduleReview';
 
 const { Header, Sider, Content } = Layout;
 
-type PageKey = 'ships' | 'gantt' | 'schedule' | 'conflict' | 'handover' | 'review';
+type PageKey = 'dashboard' | 'ships' | 'gantt' | 'schedule' | 'conflict' | 'handover' | 'review';
 
 const menuItems = [
+  {
+    key: 'dashboard',
+    icon: <DashboardOutlined />,
+    label: '值班驾驶舱'
+  },
   {
     key: 'ships',
     icon: <GlobalOutlined />,
@@ -62,7 +69,8 @@ const menuItems = [
 ];
 
 function App() {
-  const [currentPage, setCurrentPage] = useState<PageKey>('gantt');
+  const [currentPage, setCurrentPage] = useState<PageKey>('dashboard');
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
   const {
     token: { colorBgContainer, borderRadiusLG }
   } = theme.useToken();
@@ -110,22 +118,31 @@ function App() {
     }
   ];
 
+  const handleNavigate = (page: string, scheduleId?: string) => {
+    setCurrentPage(page as PageKey);
+    if (scheduleId) {
+      setSelectedScheduleId(scheduleId);
+    }
+  };
+
   const renderPage = () => {
     switch (currentPage) {
+      case 'dashboard':
+        return <Dashboard onNavigate={handleNavigate} />;
       case 'ships':
         return <ShipList />;
       case 'gantt':
         return <BerthGantt />;
       case 'schedule':
-        return <ScheduleEdit />;
+        return <ScheduleEdit selectedScheduleId={selectedScheduleId} />;
       case 'conflict':
-        return <ConflictCheck />;
+        return <ConflictCheck selectedScheduleId={selectedScheduleId} />;
       case 'handover':
-        return <Handover />;
+        return <Handover onNavigate={handleNavigate} />;
       case 'review':
         return <ScheduleReview />;
       default:
-        return <BerthGantt />;
+        return <Dashboard onNavigate={handleNavigate} />;
     }
   };
 

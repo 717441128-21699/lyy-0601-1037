@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Table,
   Button,
@@ -16,7 +16,14 @@ import {
   Descriptions,
   Timeline,
   Tabs,
-  Badge
+  Badge,
+  Alert,
+  List,
+  Progress,
+  Row,
+  Col,
+  Statistic,
+  Typography
 } from 'antd';
 import {
   PlusOutlined,
@@ -28,12 +35,17 @@ import {
   HistoryOutlined,
   WarningOutlined,
   CheckCircleOutlined,
-  InfoCircleOutlined
+  InfoCircleOutlined,
+  ExperimentOutlined,
+  PlayCircleOutlined,
+  CloseCircleOutlined,
+  EyeOutlined,
+  FileTextOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useSchedulerStore } from '@/store';
-import type { Schedule, ScheduleStatus, OperationRecord } from '@/types';
+import type { Schedule, ScheduleStatus, OperationRecord, AdjustmentPlan, PlanType } from '@/types';
 import {
   formatDateTime,
   getStatusColor,
@@ -46,22 +58,35 @@ import {
 const { Option } = Select;
 const { TextArea } = Input;
 const { TabPane } = Tabs;
+const { Text } = Typography;
 
 const statusOptions: ScheduleStatus[] = ['待靠泊', '靠泊中', '作业中', '已离港', '已取消', '延期'];
 
-const ScheduleEdit = () => {
+interface ScheduleEditProps {
+  selectedScheduleId?: string | null;
+}
+
+const ScheduleEdit: React.FC<ScheduleEditProps> = ({ selectedScheduleId }) => {
   const [form] = Form.useForm();
   const [delayForm] = Form.useForm();
+  const [planForm] = Form.useForm();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDelayModalOpen, setIsDelayModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  const [isPlanDetailModalOpen, setIsPlanDetailModalOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
-  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'working' | 'delayed' | 'cancelled'>('all');
+  const [selectedPlan, setSelectedPlan] = useState<AdjustmentPlan | null>(null);
+  const [planType, setPlanType] = useState<PlanType>('reschedule');
+  const [planScheduleId, setPlanScheduleId] = useState<string | undefined>(undefined);
+  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'working' | 'delayed' | 'cancelled' | 'plans'>('all');
 
   const schedules = useSchedulerStore((state) => state.schedules);
   const ships = useSchedulerStore((state) => state.ships);
   const berths = useSchedulerStore((state) => state.berths);
+  const adjustmentPlans = useSchedulerStore((state) => state.adjustmentPlans);
+  const currentOperator = useSchedulerStore((state) => state.currentOperator);
   const addSchedule = useSchedulerStore((state) => state.addSchedule);
   const updateSchedule = useSchedulerStore((state) => state.updateSchedule);
   const deleteSchedule = useSchedulerStore((state) => state.deleteSchedule);
@@ -69,6 +94,24 @@ const ScheduleEdit = () => {
   const delaySchedule = useSchedulerStore((state) => state.delaySchedule);
   const cancelSchedule = useSchedulerStore((state) => state.cancelSchedule);
   const getFilteredSchedules = useSchedulerStore((state) => state.getFilteredSchedules);
+  const createAdjustmentPlan = useSchedulerStore((state) => state.createAdjustmentPlan);
+  const simulatePlan = useSchedulerStore((state) => state.simulatePlan);
+  const approvePlan = useSchedulerStore((state) => state.approvePlan);
+  const rejectPlan = useSchedulerStore((state) => state.rejectPlan);
+  const applyPlan = useSchedulerStore((state) => state.applyPlan);
+  const deletePlan = useSchedulerStore((state) => state.deletePlan);
+  const getScheduleById = useSchedulerStore((state) => state.getScheduleById);
+  const getShipById = useSchedulerStore((state) => state.getShipById);
+  const getBerthById = useSchedulerStore((state) => state.getBerthById);
+
+  useEffect(() => {
+    if (selectedScheduleId) {
+      const schedule = getScheduleById(selectedScheduleId);
+      if (schedule) {
+        setSelectedSchedule(schedule);
+      }
+    }
+  }, [selectedScheduleId, getScheduleById]);
 
   const getAvailableBerths = (shipId?: string) => {
     if (!shipId) return berths.filter((b) => b.status !== '维护中');
@@ -111,6 +154,12 @@ const ScheduleEdit = () => {
     }
     
     return filtered.sort((a, b) => a.priority - b.priority);
+  };
+
+  const getFilteredPlans = () => {
+    return adjustmentPlans
+      .filter(p => p.status !== 'applied' && p.status !== 'rejected')
+      .sort((a, b) => dayjs(b.createTime).valueOf() - dayjs(a.createTime).valueOf());
   };
 
   const handleAdd = () => {
@@ -262,6 +311,157 @@ const ScheduleEdit = () => {
     }
   };
 
+  const handleCreatePlan = (schedule: Schedule) => {
+    setPlanScheduleId(schedule.id);
+    setPlanType('reschedule');
+    planForm.setFieldsValue({
+      name: `调整预案-${getShipById(schedule.shipId)?.name || '未知船舶'}`,
+      description: '',
+      berthId: schedule.berthId,
+      plannedBerthingTime: dayjs(schedule.plannedBerthingTime),
+      operationDuration: schedule.operationDuration
+    });
+    setIsPlanModalOpen(true);
+  };
+
+  const handleSimulatePlan = async () => {
+    try {
+      const values = await planForm.validateFields();
+      
+      const proposedChanges: any = {
+        berthId: values.berthId,
+        plannedBerthingTime: values.plannedBerthingTime.format('YYYY-MM-DD HH:mm'),
+        plannedDepartureTime: values.plannedBerthingTime
+          .add(values.operationDuration, 'hour')
+          .format('YYYY-MM-DD HH:mm'),
+        operationDuration: values.operationDuration
+      };
+
+      if (planType === 'delay') {
+        proposedChanges.status = '延期';
+      } else if (planType === 'cancel') {
+        proposedChanges.status = '已取消';
+      } else if (planType === 'insert') {
+        proposedChanges.priority = values.priority || 999;
+      }
+
+      const plan = createAdjustmentPlan({
+        type: planType,
+        name: values.name,
+        description: values.description,
+        scheduleId: planScheduleId,
+        proposedChanges
+      });
+
+      const simulatedPlan = simulatePlan(plan.id);
+      if (simulatedPlan) {
+        setSelectedPlan(simulatedPlan);
+        setIsPlanModalOpen(false);
+        setIsPlanDetailModalOpen(true);
+        message.success('预案模拟完成，请查看分析结果');
+      }
+    } catch (error) {
+      console.error('预案创建失败:', error);
+      message.error('请填写完整的预案信息');
+    }
+  };
+
+  const handleViewPlanDetail = (plan: AdjustmentPlan) => {
+    setSelectedPlan(plan);
+    setIsPlanDetailModalOpen(true);
+  };
+
+  const handleApprovePlan = (planId: string) => {
+    Modal.confirm({
+      title: '确认预案',
+      content: '确认此调整预案无误，准备执行？',
+      onOk: () => {
+        approvePlan(planId, '审核通过');
+        message.success('预案已确认，可执行');
+      }
+    });
+  };
+
+  const handleApplyPlan = (planId: string) => {
+    Modal.confirm({
+      title: '执行预案',
+      content: '执行此预案将修改调度计划并记录操作历史，确认继续？',
+      onOk: () => {
+        const result = applyPlan(planId, '预案执行');
+        if (result.success) {
+          message.success(result.message);
+          setIsPlanDetailModalOpen(false);
+        } else {
+          message.error(result.message);
+        }
+      }
+    });
+  };
+
+  const handleRejectPlan = (planId: string) => {
+    Modal.confirm({
+      title: '拒绝预案',
+      content: '请输入拒绝原因：',
+      onOk: () => {
+        rejectPlan(planId, '审核不通过');
+        message.warning('预案已拒绝');
+      }
+    });
+  };
+
+  const handleDeletePlan = (planId: string) => {
+    Modal.confirm({
+      title: '删除预案',
+      content: '确定要删除此预案吗？',
+      onOk: () => {
+        deletePlan(planId);
+        message.success('预案已删除');
+      }
+    });
+  };
+
+  const getPlanTypeLabel = (type: PlanType) => {
+    const labels: Record<PlanType, string> = {
+      reschedule: '调整泊位/时间',
+      insert: '临时插队',
+      delay: '延期离港',
+      cancel: '取消靠泊',
+      modify: '修改调度'
+    };
+    return labels[type] || type;
+  };
+
+  const getPlanStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      draft: '草稿',
+      pending: '待审核',
+      approved: '已批准',
+      rejected: '已拒绝',
+      applied: '已执行'
+    };
+    return labels[status] || status;
+  };
+
+  const getPlanStatusColor = (status: string) => {
+    const colors: Record<string, string> = {
+      draft: 'default',
+      pending: 'processing',
+      approved: 'success',
+      rejected: 'error',
+      applied: 'purple'
+    };
+    return colors[status] || 'default';
+  };
+
+  const getRiskLevelColor = (level: 'low' | 'medium' | 'high') => {
+    const colors: Record<string, string> = {
+      low: 'green',
+      medium: 'orange',
+      high: 'red'
+    };
+    return colors[level] || 'default';
+  };
+
   const renderOperationIcon = (type: string) => {
     const iconMap: Record<string, React.ReactNode> = {
       insert: <PushpinOutlined style={{ color: '#faad14' }} />,
@@ -379,7 +579,7 @@ const ScheduleEdit = () => {
     {
       title: '操作',
       key: 'actions',
-      width: 280,
+      width: 320,
       fixed: 'right',
       render: (_, record) => (
         <Space size="small" wrap>
@@ -423,6 +623,15 @@ const ScheduleEdit = () => {
           <Button
             type="link"
             size="small"
+            icon={<ExperimentOutlined />}
+            onClick={() => handleCreatePlan(record)}
+            disabled={record.status === '已取消' || record.status === '已离港'}
+          >
+            预案
+          </Button>
+          <Button
+            type="link"
+            size="small"
             icon={<HistoryOutlined />}
             onClick={() => handleViewHistory(record)}
           >
@@ -438,10 +647,170 @@ const ScheduleEdit = () => {
     { key: 'pending', tab: '待靠泊', count: schedules.filter((s) => s.status === '待靠泊').length },
     { key: 'working', tab: '作业中', count: schedules.filter((s) => s.status === '作业中' || s.status === '靠泊中').length },
     { key: 'delayed', tab: '已延期', count: schedules.filter((s) => s.status === '延期').length },
-    { key: 'cancelled', tab: '已取消', count: schedules.filter((s) => s.status === '已取消').length }
+    { key: 'cancelled', tab: '已取消', count: schedules.filter((s) => s.status === '已取消').length },
+    { key: 'plans', tab: '调整预案', count: adjustmentPlans.filter(p => p.status !== 'applied' && p.status !== 'rejected').length }
   ];
 
   const filteredSchedules = getFilteredList();
+  const filteredPlans = getFilteredPlans();
+
+  const planColumns: ColumnsType<AdjustmentPlan> = [
+    {
+      title: '预案名称',
+      dataIndex: 'name',
+      key: 'name',
+      width: 180,
+      render: (text) => <Text strong>{text}</Text>,
+    },
+    {
+      title: '类型',
+      dataIndex: 'type',
+      key: 'type',
+      width: 120,
+      render: (type: PlanType) => <Tag color="blue">{getPlanTypeLabel(type)}</Tag>,
+    },
+    {
+      title: '船舶',
+      key: 'ship',
+      width: 120,
+      render: (_, record) => {
+        const schedule = record.scheduleId ? getScheduleById(record.scheduleId) : undefined;
+        const ship = schedule ? getShipById(schedule.shipId) : undefined;
+        return ship?.name || '-';
+      },
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 100,
+      render: (status) => (
+        <Tag color={getPlanStatusColor(status)}>{getPlanStatusLabel(status)}</Tag>
+      ),
+    },
+    {
+      title: '风险等级',
+      key: 'risk',
+      width: 100,
+      render: (_, record) => {
+        if (record.status === 'draft') return <Tag color="default">未模拟</Tag>;
+        return (
+          <Tag color={getRiskLevelColor(record.impactAnalysis.riskLevel)}>
+            {record.impactAnalysis.riskLevel === 'high' ? '高风险' : 
+             record.impactAnalysis.riskLevel === 'medium' ? '中风险' : '低风险'}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: '影响船舶',
+      key: 'affected',
+      width: 150,
+      render: (_, record) => {
+        if (record.status === 'draft') return '-';
+        return (
+          <Space wrap>
+            {record.impactAnalysis.affectedShips.slice(0, 3).map((ship, idx) => (
+              <Tag key={idx}>{ship}</Tag>
+            ))}
+            {record.impactAnalysis.affectedShips.length > 3 && (
+              <Tag>+{record.impactAnalysis.affectedShips.length - 3}</Tag>
+            )}
+          </Space>
+        );
+      },
+    },
+    {
+      title: '创建人',
+      dataIndex: 'operator',
+      key: 'operator',
+      width: 100,
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'createTime',
+      key: 'createTime',
+      width: 160,
+      render: (text) => formatDateTime(text),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 240,
+      fixed: 'right',
+      render: (_, record) => (
+        <Space size="small" wrap>
+          <Button
+            type="link"
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => handleViewPlanDetail(record)}
+          >
+            详情
+          </Button>
+          {record.status === 'draft' && (
+            <Button
+              type="link"
+              size="small"
+              icon={<ExperimentOutlined />}
+              onClick={() => {
+                const simulated = simulatePlan(record.id);
+                if (simulated) {
+                  setSelectedPlan(simulated);
+                  setIsPlanDetailModalOpen(true);
+                  message.success('模拟分析完成');
+                }
+              }}
+            >
+              模拟分析
+            </Button>
+          )}
+          {record.status === 'pending' && (
+            <>
+              <Button
+                type="link"
+                size="small"
+                icon={<CheckCircleOutlined />}
+                onClick={() => handleApprovePlan(record.id)}
+              >
+                确认
+              </Button>
+              <Button
+                type="link"
+                size="small"
+                danger
+                icon={<CloseCircleOutlined />}
+                onClick={() => handleRejectPlan(record.id)}
+              >
+                拒绝
+              </Button>
+            </>
+          )}
+          {record.status === 'approved' && (
+            <Button
+              type="link"
+              size="small"
+              icon={<PlayCircleOutlined />}
+              onClick={() => handleApplyPlan(record.id)}
+            >
+              执行
+            </Button>
+          )}
+          {record.status !== 'applied' && (
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleDeletePlan(record.id)}
+            >
+              删除
+            </Button>
+          )}
+        </Space>
+      ),
+    },
+  ];
 
   return (
     <div style={{ padding: 16, height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -478,71 +847,87 @@ const ScheduleEdit = () => {
       </div>
 
       <div className="table-container" style={{ flex: 1, overflow: 'auto', marginTop: 16 }}>
-        <Table
-          columns={columns}
-          dataSource={filteredSchedules}
-          rowKey="id"
-          scroll={{ x: 1600, y: 'calc(100vh - 380px)' }}
-          pagination={{
-            pageSize: 20,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 条记录`
-          }}
-          expandable={{
-            expandedRowRender: (record) => {
-              const ship = ships.find((s) => s.id === record.shipId);
-              const berth = berths.find((b) => b.id === record.berthId);
-              
-              return (
-                <Card size="small" style={{ marginBottom: 8 }}>
-                  <Descriptions size="small" column={4}>
-                    <Descriptions.Item label="船长">
-                      {ship?.length}m
-                    </Descriptions.Item>
-                    <Descriptions.Item label="吃水">
-                      {ship?.draft}m
-                    </Descriptions.Item>
-                    <Descriptions.Item label="货量">
-                      {ship?.cargoWeight?.toLocaleString()}t
-                    </Descriptions.Item>
-                    <Descriptions.Item label="代理">
-                      {ship?.agent}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="泊位参数">
-                      {berth?.maxLength}m / {berth?.maxDraft}m
-                    </Descriptions.Item>
-                    <Descriptions.Item label="允许货类">
-                      {berth?.allowedCargoTypes.join(', ')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="特殊要求">
-                      {ship?.specialRequirements || '-'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="备注">
-                      {record.remarks || '-'}
-                    </Descriptions.Item>
-                  </Descriptions>
-                  {record.conflictWarnings && record.conflictWarnings.length > 0 && (
-                    <div style={{ marginTop: 12, padding: 12, background: '#fffbe6', borderRadius: 4 }}>
-                      <div style={{ fontWeight: 600, marginBottom: 8, color: '#faad14' }}>
-                        <WarningOutlined /> 冲突警告
-                      </div>
-                      {record.conflictWarnings.map((w) => (
-                        <div
-                          key={w.id}
-                          className={`conflict-badge conflict-${w.severity}`}
-                          style={{ marginBottom: 4 }}
-                        >
-                          {getConflictTypeLabel(w.type)}：{w.message}
+        {activeTab === 'plans' ? (
+          <Table
+            columns={planColumns}
+            dataSource={filteredPlans}
+            rowKey="id"
+            scroll={{ x: 1400, y: 'calc(100vh - 380px)' }}
+            pagination={{
+              pageSize: 20,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total) => `共 ${total} 条预案`
+            }}
+            locale={{ emptyText: '暂无调整预案，点击调度列表中的"预案"按钮创建' }}
+          />
+        ) : (
+          <Table
+            columns={columns}
+            dataSource={filteredSchedules}
+            rowKey="id"
+            scroll={{ x: 1600, y: 'calc(100vh - 380px)' }}
+            pagination={{
+              pageSize: 20,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total) => `共 ${total} 条记录`
+            }}
+            expandable={{
+              expandedRowRender: (record) => {
+                const ship = ships.find((s) => s.id === record.shipId);
+                const berth = berths.find((b) => b.id === record.berthId);
+                
+                return (
+                  <Card size="small" style={{ marginBottom: 8 }}>
+                    <Descriptions size="small" column={4}>
+                      <Descriptions.Item label="船长">
+                        {ship?.length}m
+                      </Descriptions.Item>
+                      <Descriptions.Item label="吃水">
+                        {ship?.draft}m
+                      </Descriptions.Item>
+                      <Descriptions.Item label="货量">
+                        {ship?.cargoWeight?.toLocaleString()}t
+                      </Descriptions.Item>
+                      <Descriptions.Item label="代理">
+                        {ship?.agent}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="泊位参数">
+                        {berth?.maxLength}m / {berth?.maxDraft}m
+                      </Descriptions.Item>
+                      <Descriptions.Item label="允许货类">
+                        {berth?.allowedCargoTypes.join(', ')}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="特殊要求">
+                        {ship?.specialRequirements || '-'}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="备注">
+                        {record.remarks || '-'}
+                      </Descriptions.Item>
+                    </Descriptions>
+                    {record.conflictWarnings && record.conflictWarnings.filter(w => !w.resolved).length > 0 && (
+                      <div style={{ marginTop: 12, padding: 12, background: '#fffbe6', borderRadius: 4 }}>
+                        <div style={{ fontWeight: 600, marginBottom: 8, color: '#faad14' }}>
+                          <WarningOutlined /> 冲突警告（未处理 {record.conflictWarnings.filter(w => !w.resolved).length} 项）
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </Card>
-              );
-            }
-          }}
-        />
+                        {record.conflictWarnings.filter(w => !w.resolved).map((w) => (
+                          <div
+                            key={w.id}
+                            className={`conflict-badge conflict-${w.severity}`}
+                            style={{ marginBottom: 4 }}
+                          >
+                            {getConflictTypeLabel(w.type)}：{w.message}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                );
+              }
+            }}
+          />
+        )}
       </div>
 
       <Modal

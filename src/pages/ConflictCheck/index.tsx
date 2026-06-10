@@ -39,9 +39,14 @@ import {
 
 const { Option } = Select;
 
-const ConflictCheck = () => {
+interface ConflictCheckProps {
+  selectedScheduleId?: string | null;
+}
+
+const ConflictCheck: React.FC<ConflictCheckProps> = ({ selectedScheduleId }) => {
   const [filterType, setFilterType] = useState<ConflictType | 'all'>('all');
   const [filterSeverity, setFilterSeverity] = useState<'all' | 'error' | 'warning' | 'info'>('all');
+  const [showResolved, setShowResolved] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const conflictWarnings = useSchedulerStore((state) => state.conflictWarnings);
@@ -62,6 +67,7 @@ const ConflictCheck = () => {
   }, [autoRefresh, checkConflicts]);
 
   const filteredWarnings = conflictWarnings.filter((warning) => {
+    if (!showResolved && warning.resolved) return false;
     if (filterType !== 'all' && warning.type !== filterType) return false;
     if (filterSeverity !== 'all' && warning.severity !== filterSeverity) return false;
     return true;
@@ -391,6 +397,17 @@ const ConflictCheck = () => {
       <Card size="small" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
           <Space size={16} wrap>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: '#666' }}>显示已解决：</span>
+              <Select
+                value={showResolved ? 'yes' : 'no'}
+                onChange={(v) => setShowResolved(v === 'yes')}
+                style={{ width: 100 }}
+              >
+                <Option value="no">否</Option>
+                <Option value="yes">是</Option>
+              </Select>
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ color: '#666' }}>冲突类型：</span>
               <Select

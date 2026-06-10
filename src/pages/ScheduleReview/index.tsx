@@ -49,6 +49,8 @@ interface FilterState {
   dateRange: [Dayjs, Dayjs] | null;
   shipName: string;
   berthId: string;
+  originalBerthId: string;
+  newBerthId: string;
   operator: string;
   operationType: OperationType | 'all';
 }
@@ -58,6 +60,8 @@ const ScheduleReview = () => {
     dateRange: [dayjs().subtract(7, 'day'), dayjs()],
     shipName: '',
     berthId: '',
+    originalBerthId: '',
+    newBerthId: '',
     operator: '',
     operationType: 'all'
   });
@@ -74,6 +78,8 @@ const ScheduleReview = () => {
     dateRange: filters.dateRange ? [filters.dateRange[0].format('YYYY-MM-DD'), filters.dateRange[1].format('YYYY-MM-DD')] : undefined,
     shipName: filters.shipName || undefined,
     berthId: filters.berthId || undefined,
+    originalBerthId: filters.originalBerthId || undefined,
+    newBerthId: filters.newBerthId || undefined,
     operator: filters.operator || undefined,
     operationType: filters.operationType
   });
@@ -143,6 +149,8 @@ const ScheduleReview = () => {
       dateRange: [dayjs().subtract(7, 'day'), dayjs()],
       shipName: '',
       berthId: '',
+      originalBerthId: '',
+      newBerthId: '',
       operator: '',
       operationType: 'all'
     });
@@ -212,6 +220,28 @@ const ScheduleReview = () => {
         const schedule = schedules.find(s => s.id === record.scheduleId);
         const berth = schedule ? berths.find(b => b.id === schedule.berthId) : null;
         return berth?.name || '-';
+      }
+    },
+    {
+      title: '原泊位',
+      key: 'originalBerth',
+      width: 100,
+      render: (_, record) => {
+        const berth = record.originalBerthId ? berths.find(b => b.id === record.originalBerthId) : null;
+        return berth ? (
+          <span style={{ color: '#ff4d4f' }}>{berth.name}</span>
+        ) : '-';
+      }
+    },
+    {
+      title: '新泊位',
+      key: 'newBerth',
+      width: 100,
+      render: (_, record) => {
+        const berth = record.newBerthId ? berths.find(b => b.id === record.newBerthId) : null;
+        return berth ? (
+          <span style={{ color: '#52c41a' }}>{berth.name}</span>
+        ) : '-';
       }
     },
     {
@@ -323,6 +353,20 @@ const ScheduleReview = () => {
           {berth && (
             <Descriptions.Item label="当前泊位" span={2}>
               {berth.name} ({berth.code})
+            </Descriptions.Item>
+          )}
+          {selectedRecord.originalBerthId && (
+            <Descriptions.Item label="原泊位">
+              <span style={{ color: '#ff4d4f' }}>
+                {berths.find(b => b.id === selectedRecord.originalBerthId)?.name || selectedRecord.originalBerthId}
+              </span>
+            </Descriptions.Item>
+          )}
+          {selectedRecord.newBerthId && (
+            <Descriptions.Item label="新泊位">
+              <span style={{ color: '#52c41a' }}>
+                {berths.find(b => b.id === selectedRecord.newBerthId)?.name || selectedRecord.newBerthId}
+              </span>
             </Descriptions.Item>
           )}
           <Descriptions.Item label="操作原因" span={2}>
@@ -465,7 +509,7 @@ const ScheduleReview = () => {
             </Select>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ color: '#666', whiteSpace: 'nowrap' }}>泊位：</span>
+            <span style={{ color: '#666', whiteSpace: 'nowrap' }}>当前泊位：</span>
             <Select
               value={filters.berthId}
               onChange={(value) => setFilters(f => ({ ...f, berthId: value }))}
@@ -473,6 +517,40 @@ const ScheduleReview = () => {
               allowClear
               showSearch
               placeholder="选择泊位"
+            >
+              {berths.map(berth => (
+                <Option key={berth.id} value={berth.id}>
+                  {berth.name}
+                </Option>
+              ))}
+            </Select>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#ff4d4f', whiteSpace: 'nowrap' }}>原泊位：</span>
+            <Select
+              value={filters.originalBerthId}
+              onChange={(value) => setFilters(f => ({ ...f, originalBerthId: value }))}
+              style={{ width: 140 }}
+              allowClear
+              showSearch
+              placeholder="原泊位"
+            >
+              {berths.map(berth => (
+                <Option key={berth.id} value={berth.id}>
+                  {berth.name}
+                </Option>
+              ))}
+            </Select>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#52c41a', whiteSpace: 'nowrap' }}>新泊位：</span>
+            <Select
+              value={filters.newBerthId}
+              onChange={(value) => setFilters(f => ({ ...f, newBerthId: value }))}
+              style={{ width: 140 }}
+              allowClear
+              showSearch
+              placeholder="新泊位"
             >
               {berths.map(berth => (
                 <Option key={berth.id} value={berth.id}>
@@ -508,7 +586,7 @@ const ScheduleReview = () => {
           columns={columns}
           dataSource={filteredRecords}
           rowKey="id"
-          scroll={{ x: 1600, y: 'calc(100vh - 480px)' }}
+          scroll={{ x: 1900, y: 'calc(100vh - 480px)' }}
           pagination={{
             pageSize: 20,
             showSizeChanger: true,

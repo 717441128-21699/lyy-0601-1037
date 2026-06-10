@@ -84,6 +84,8 @@ export interface OperationRecord {
   oldValue?: string;
   newValue?: string;
   reason: string;
+  originalBerthId?: string;
+  newBerthId?: string;
 }
 
 export interface ShiftRecord {
@@ -96,6 +98,7 @@ export interface ShiftRecord {
   schedules: string[];
   summary: string;
   pendingMatters: string;
+  pendingTodoIds?: string[];
   createTime: string;
 }
 
@@ -115,4 +118,137 @@ export interface FilterParams {
   status?: ScheduleStatus;
   startDate?: string;
   endDate?: string;
+}
+
+export type PlanType = 'reschedule' | 'insert' | 'delay' | 'cancel' | 'modify';
+export type PlanStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'applied';
+export type TodoStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+export type TodoPriority = 'high' | 'medium' | 'low';
+export type TodoSource = 'conflict' | 'plan' | 'ship' | 'handover' | 'manual';
+
+export interface AdjustmentPlan {
+  id: string;
+  type: PlanType;
+  name: string;
+  description: string;
+  scheduleId?: string;
+  originalSchedule?: Partial<Schedule>;
+  proposedChanges: Partial<Schedule>;
+  affectedScheduleIds: string[];
+  conflictChanges: {
+    newConflicts: ConflictWarning[];
+    resolvedConflicts: ConflictWarning[];
+    existingConflicts: ConflictWarning[];
+  };
+  impactAnalysis: {
+    affectedShips: string[];
+    delayMinutes: number;
+    riskLevel: 'low' | 'medium' | 'high';
+  };
+  status: PlanStatus;
+  priority: number;
+  operator: string;
+  reviewer?: string;
+  createTime: string;
+  updateTime: string;
+  applyTime?: string;
+  rejectReason?: string;
+}
+
+export interface TodoItem {
+  id: string;
+  title: string;
+  description: string;
+  source: TodoSource;
+  sourceId: string;
+  priority: TodoPriority;
+  status: TodoStatus;
+  scheduleId?: string;
+  conflictId?: string;
+  planId?: string;
+  shipId?: string;
+  assignee: string;
+  assignor: string;
+  progress: number;
+  dueTime?: string;
+  completedTime?: string;
+  remarks?: string;
+  createTime: string;
+  updateTime: string;
+}
+
+export interface DashboardData {
+  timeRange: {
+    start: string;
+    end: string;
+  };
+  berthOccupancy: {
+    berthId: string;
+    berthName: string;
+    occupancyRate: number;
+    occupiedHours: number;
+    availableHours: number;
+    scheduleCount: number;
+  }[];
+  pendingShips: {
+    count: number;
+    ships: {
+      shipId: string;
+      shipName: string;
+      arrivalTime: string;
+      berthName: string;
+      status: ScheduleStatus;
+      waitHours: number;
+    }[];
+  };
+  riskStats: {
+    total: number;
+    resolved: number;
+    unresolved: number;
+    byType: Record<ConflictType, { total: number; unresolved: number }>;
+    bySeverity: {
+      error: { total: number; unresolved: number };
+      warning: { total: number; unresolved: number };
+      info: { total: number; unresolved: number };
+    };
+  };
+  overtimeRisk: {
+    count: number;
+    schedules: {
+      scheduleId: string;
+      shipName: string;
+      berthName: string;
+      plannedDepartureTime: string;
+      remainingHours: number;
+      overtimeRisk: 'high' | 'medium' | 'low';
+    }[];
+  };
+  upcomingSchedules: {
+    count: number;
+    schedules: {
+      scheduleId: string;
+      shipName: string;
+      berthName: string;
+      plannedBerthingTime: string;
+      countdownMinutes: number;
+      priority: number;
+    }[];
+  };
+  operationStats: {
+    todayInsert: number;
+    todayDelay: number;
+    todayCancel: number;
+    todayReschedule: number;
+    todayModify: number;
+  };
+}
+
+export interface OperationReviewFilters {
+  dateRange?: [string, string];
+  shipName?: string;
+  berthId?: string;
+  originalBerthId?: string;
+  newBerthId?: string;
+  operator?: string;
+  operationType?: OperationType | 'all';
 }
