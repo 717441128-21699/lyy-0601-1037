@@ -387,6 +387,50 @@ body {
   color: #666;
 }
 
+.drag-preview {
+  transition: all 0.1s ease-out;
+  user-select: none;
+}
+
+.drag-preview.valid {
+  animation: pulse-green 1s infinite;
+}
+
+.drag-preview.invalid {
+  animation: pulse-red 1s infinite;
+}
+
+@keyframes pulse-green {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+@keyframes pulse-red {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.gantt-timeline-body {
+  cursor: default;
+}
+
+.gantt-timeline-body.dragging {
+  cursor: grabbing;
+}
+
+.gantt-task.dragging {
+  opacity: 0.3 !important;
+  transform: scale(0.98) !important;
+}
+
 @media print {
   .no-print {
     display: none !important;

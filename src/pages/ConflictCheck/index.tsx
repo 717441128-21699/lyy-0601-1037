@@ -49,8 +49,8 @@ const ConflictCheck = () => {
   const ships = useSchedulerStore((state) => state.ships);
   const berths = useSchedulerStore((state) => state.berths);
   const checkConflicts = useSchedulerStore((state) => state.checkConflicts);
-  const updateSchedule = useSchedulerStore((state) => state.updateSchedule);
-  const rescheduleShip = useSchedulerStore((state) => state.rescheduleShip);
+  const resolveConflict = useSchedulerStore((state) => state.resolveConflict);
+  const autoResolveConflict = useSchedulerStore((state) => state.autoResolveConflict);
 
   useEffect(() => {
     if (autoRefresh) {
@@ -83,13 +83,22 @@ const ConflictCheck = () => {
 
     Modal.confirm({
       title: '标记为已解决',
-      content: '确定要将此冲突标记为已解决吗？建议先调整调度计划以消除冲突。',
+      content: (
+        <div>
+          <p>确定要将此冲突标记为已解决吗？</p>
+          <p style={{ color: '#faad14', margin: '8px 0' }}>
+            <WarningOutlined /> 建议先调整调度计划以消除冲突。
+          </p>
+          <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6 }}>
+            <p style={{ margin: 0 }}><strong>冲突类型：</strong>{getConflictTypeLabel(warning.type)}</p>
+            <p style={{ margin: '4px 0 0 0' }}><strong>冲突描述：</strong>{warning.message}</p>
+          </div>
+        </div>
+      ),
       onOk: () => {
-        const updatedWarnings = schedule.conflictWarnings.map((w) =>
-          w.id === warning.id ? { ...w, resolved: true } : w
-        );
-        updateSchedule(schedule.id, { conflictWarnings: updatedWarnings });
-        message.success('已标记为已解决');
+        resolveConflict(warning.id, '人工标记已解决');
+        message.success('已标记为已解决，操作历史已记录');
+        setTimeout(() => checkConflicts(), 100);
       }
     });
   };
@@ -100,59 +109,31 @@ const ConflictCheck = () => {
     const ship = ships.find((s) => s.id === schedule.shipId);
     if (!ship) return;
 
-    if (warning.type === 'simultaneous_operation') {
-      Modal.confirm({
-        title: '自动调整时间',
-        content: '系统将自动调整该调度的靠泊时间以避开冲突，是否继续？',
-        onOk: () => {
-          const conflictingSchedule = schedules.find(
-            (s) => s.id === warning.relatedScheduleIds?.[0]
-          );
-          if (conflictingSchedule) {
-            const newBerthingTime = dayjs(conflictingSchedule.plannedDepartureTime).add(1, 'hour');
-            rescheduleShip(
-              schedule.id,
-              schedule.berthId,
-              newBerthingTime.format('YYYY-MM-DD HH:mm')
-            );
-            message.success('已自动调整靠泊时间');
-          }
+    Modal.confirm({
+      title: '自动处理冲突',
+      content: (
+        <div>
+          <p>系统将尝试自动处理此冲突，是否继续？</p>
+          <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6, marginTop: 8 }}>
+            <p style={{ margin: 0 }}><strong>船舶：</strong>{ship.name}</p>
+            <p style={{ margin: '4px 0' }}><strong>冲突类型：</strong>{getConflictTypeLabel(warning.type)}</p>
+            <p style={{ margin: 0 }}><strong>冲突描述：</strong>{warning.message}</p>
+          </div>
+          <p style={{ marginTop: 12, color: '#666', fontSize: 12 }}>
+            <InfoCircleOutlined /> 系统将根据冲突类型自动调整调度，并记录操作历史。
+          </p>
+        </div>
+      ),
+      onOk: () => {
+        const result = autoResolveConflict(warning.id);
+        if (result.success) {
+          message.success(`${result.message}，操作历史已记录`);
+          setTimeout(() => checkConflicts(), 200);
+        } else {
+          message.error(result.message);
         }
-      });
-    } else if (warning.type === 'berth_capacity' || warning.type === 'draft') {
-      Modal.confirm({
-        title: '自动分配泊位',
-        content: '系统将尝试为该船舶分配合适的泊位，是否继续？',
-        onOk: () => {
-          const suitableBerth = berths.find(
-            (b) =>
-              b.allowedCargoTypes.includes(ship.cargoType) &&
-              b.maxLength >= ship.length &&
-              b.maxDraft >= ship.draft &&
-              b.status !== '维护中' &&
-              b.id !== schedule.berthId
-          );
-
-          if (suitableBerth) {
-            rescheduleShip(schedule.id, suitableBerth.id, schedule.plannedBerthingTime);
-            message.success(`已分配到${suitableBerth.name}`);
-          } else {
-            message.error('未找到合适的泊位，请手动调整');
-          }
-        }
-      });
-    } else if (warning.type === 'tide') {
-      Modal.confirm({
-        title: '调整靠泊时间',
-        content: '系统将调整靠泊时间以等待高潮位，是否继续？',
-        onOk: () => {
-          const currentTime = dayjs(schedule.plannedBerthingTime);
-          const newBerthingTime = currentTime.add(6, 'hour');
-          rescheduleShip(schedule.id, schedule.berthId, newBerthingTime.format('YYYY-MM-DD HH:mm'));
-          message.success('已调整靠泊时间');
-        }
-      });
-    }
+      }
+    });
   };
 
   const getSeverityIcon = (severity: string) => {

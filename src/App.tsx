@@ -9,7 +9,8 @@ import {
   ExportOutlined,
   SettingOutlined,
   UserOutlined,
-  LogoutOutlined
+  LogoutOutlined,
+  HistoryOutlined
 } from '@ant-design/icons';
 import { useSchedulerStore } from '@/store';
 import ShipList from '@/pages/ShipList';
@@ -17,10 +18,11 @@ import BerthGantt from '@/pages/BerthGantt';
 import ScheduleEdit from '@/pages/ScheduleEdit';
 import ConflictCheck from '@/pages/ConflictCheck';
 import Handover from '@/pages/Handover';
+import ScheduleReview from '@/pages/ScheduleReview';
 
 const { Header, Sider, Content } = Layout;
 
-type PageKey = 'ships' | 'gantt' | 'schedule' | 'conflict' | 'handover';
+type PageKey = 'ships' | 'gantt' | 'schedule' | 'conflict' | 'handover' | 'review';
 
 const menuItems = [
   {
@@ -51,6 +53,11 @@ const menuItems = [
     key: 'handover',
     icon: <UserSwitchOutlined />,
     label: '交接班'
+  },
+  {
+    key: 'review',
+    icon: <HistoryOutlined />,
+    label: '调度复盘'
   }
 ];
 
@@ -65,7 +72,12 @@ function App() {
   const setCurrentOperator = useSchedulerStore((state) => state.setCurrentOperator);
 
   useEffect(() => {
-    initializeMockData();
+    const state = useSchedulerStore.getState();
+    if (state.ships.length === 0 && state.schedules.length === 0) {
+      initializeMockData();
+    } else {
+      setTimeout(() => state.checkConflicts(), 100);
+    }
   }, [initializeMockData]);
 
   const errorCount = conflictWarnings.filter((w) => w.severity === 'error' && !w.resolved).length;
@@ -110,6 +122,8 @@ function App() {
         return <ConflictCheck />;
       case 'handover':
         return <Handover />;
+      case 'review':
+        return <ScheduleReview />;
       default:
         return <BerthGantt />;
     }

@@ -36,11 +36,20 @@ import {
 
 const { Option } = Select;
 
+interface DragPreview {
+    scheduleId: string;
+    targetBerthId: string | null;
+    targetTime: dayjs.Dayjs | null;
+    isValid: boolean;
+    validationMessage: string;
+  }
+
 const BerthGantt = () => {
   const [startDate, setStartDate] = useState(dayjs());
   const [timeRange, setTimeRange] = useState(48);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [draggingSchedule, setDraggingSchedule] = useState<string | null>(null);
+  const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
   const ganttRef = useRef<HTMLDivElement>(null);
   const [currentTime, setCurrentTime] = useState(dayjs());
@@ -90,15 +99,53 @@ const BerthGantt = () => {
     return (duration / hoursPerCell) * cellWidth;
   };
 
-  const handleDragStart = (e: React.MouseEvent, scheduleId: string) => {
-    e.preventDefault();
-    setDraggingSchedule(scheduleId);
+  const validateDragTarget = (
+    targetBerthId: string | null,
+    targetTime: dayjs.Dayjs | null,
+    schedule: Schedule | undefined
+  ): { isValid: boolean; message: string } => {
+    if (!targetBerthId || !targetTime || !schedule) {
+      return { isValid: false, message: '请拖到有效的泊位和时间区域' };
+    }
+
+    if (targetTime.isBefore(startDate) || targetTime.isAfter(startDate.add(timeRange, 'hour'))) {
+      return { isValid: false, message: '请在可见时间范围内调整' };
+    }
+
+    const ship = ships.find((s) => s.id === schedule.shipId);
+    const berth = berths.find((b) => b.id === targetBerthId);
+
+    if (ship && berth) {
+      if (ship.length > berth.maxLength) {
+        return { isValid: false, message: `船长(${ship.length}m)超出泊位最大长度(${berth.maxLength}m)` };
+      }
+      if (ship.draft > berth.maxDraft) {
+        return { isValid: false, message: `吃水(${ship.draft}m)超出泊位最大吃水(${berth.maxDraft}m)` };
+      }
+      if (!berth.allowedCargoTypes.includes(ship.cargoType)) {
+        return { isValid: false, message: `该泊位不允许停靠${ship.cargoType}类型船舶` };
+      }
+    }
+
+    return { isValid: true, message: '可以停靠' };
   };
 
-  const handleDragEnd = (e: React.MouseEvent) => {
-    if (!draggingSchedule || !ganttRef.current) return;
+  const handleDragStart = (e: React.MouseEvent, scheduleId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDraggingSchedule(scheduleId);
+    setDragPreview({
+      scheduleId,
+      targetBerthId: null,
+      targetTime: null,
+      isValid: false,
+      validationMessage: '拖动到目标位置'
+    });
+  };
+
+  const handleDragMove = (e: React.MouseEvent) => {
+    if (!draggingSchedule || !ganttRef.current || !dragPreview) return;
     
-    const containerRect = ganttRef.current.getBoundingClientRect();
     const timelineBody = ganttRef.current.querySelector('.gantt-timeline-body');
     if (!timelineBody) return;
     
@@ -113,53 +160,85 @@ const BerthGantt = () => {
       }
     });
     
-    if (!targetBerthId) {
-      setDraggingSchedule(null);
-      return;
-    }
-    
     const newBerthingTime = getDateFromPosition(e.clientX, bodyRect);
     const roundedTime = newBerthingTime
       .set('minute', Math.round(newBerthingTime.minute() / 30) * 30)
       .set('second', 0);
     
-    if (roundedTime.isBefore(startDate) || roundedTime.isAfter(startDate.add(timeRange, 'hour'))) {
-      message.warning('请在可见时间范围内调整');
-      setDraggingSchedule(null);
-      return;
-    }
-    
     const schedule = schedules.find((s) => s.id === draggingSchedule);
-    if (!schedule) {
+    const validation = validateDragTarget(targetBerthId, roundedTime, schedule);
+    
+    setDragPreview({
+      scheduleId: draggingSchedule,
+      targetBerthId,
+      targetTime: roundedTime,
+      isValid: validation.isValid,
+      validationMessage: validation.message
+    });
+  };
+
+  const handleDragEnd = (e: React.MouseEvent) => {
+    if (!draggingSchedule || !dragPreview) {
       setDraggingSchedule(null);
+      setDragPreview(null);
       return;
     }
+
+    const schedule = schedules.find((s) => s.id === draggingSchedule);
+    const berth = berths.find((b) => b.id === dragPreview.targetBerthId);
     
-    const ship = ships.find((s) => s.id === schedule.shipId);
-    const berth = berths.find((b) => b.id === targetBerthId);
-    
-    if (ship && berth) {
-      if (ship.length > berth.maxLength || ship.draft > berth.maxDraft) {
-        message.error('该泊位无法容纳此船舶（船长或吃水限制）');
-        setDraggingSchedule(null);
-        return;
-      }
-      if (!berth.allowedCargoTypes.includes(ship.cargoType)) {
-        message.error(`该泊位不允许停靠${ship.cargoType}类型船舶`);
-        setDraggingSchedule(null);
-        return;
-      }
+    if (!dragPreview.isValid || !schedule || !dragPreview.targetTime) {
+      message.error(dragPreview.validationMessage || '无法放置在此位置');
+      setDraggingSchedule(null);
+      setDragPreview(null);
+      return;
     }
-    
+
     Modal.confirm({
-      title: '确认调整',
-      content: `确定将调度调整到${berth?.name}，靠泊时间${roundedTime.format('YYYY-MM-DD HH:mm')}吗？`,
+      title: '确认调整调度',
+      content: (
+        <div>
+          <p>确定将以下调度调整到新位置吗？</p>
+          <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6, marginTop: 8 }}>
+            <p style={{ margin: '4px 0' }}>
+              <strong>船舶：</strong>{ships.find(s => s.id === schedule.shipId)?.name}
+            </p>
+            <p style={{ margin: '4px 0' }}>
+              <strong>原泊位：</strong>{berths.find(b => b.id === schedule.berthId)?.name}
+            </p>
+            <p style={{ margin: '4px 0' }}>
+              <strong>原靠泊时间：</strong>{formatDateTime(schedule.plannedBerthingTime)}
+            </p>
+            <p style={{ margin: '4px 0', borderTop: '1px dashed #ddd', paddingTop: 8 }}>
+              <strong>新泊位：</strong>{berth?.name}
+            </p>
+            <p style={{ margin: '4px 0' }}>
+              <strong>新靠泊时间：</strong>{formatDateTime(dragPreview.targetTime.toDate())}
+            </p>
+          </div>
+        </div>
+      ),
+      okText: '确认调整',
+      cancelText: '取消',
       onOk: () => {
-        rescheduleShip(draggingSchedule, targetBerthId!, roundedTime.format('YYYY-MM-DD HH:mm'));
-        message.success('调度已更新');
+        rescheduleShip(
+          draggingSchedule, 
+          dragPreview.targetBerthId!, 
+          dragPreview.targetTime!.format('YYYY-MM-DD HH:mm'),
+          '拖拽调整泊位/时间'
+        );
+        message.success('调度已更新，正在重新检查冲突...');
         setDraggingSchedule(null);
+        setDragPreview(null);
+        setTimeout(() => {
+          checkConflicts();
+          message.info('冲突检查已完成');
+        }, 200);
       },
-      onCancel: () => setDraggingSchedule(null)
+      onCancel: () => {
+        setDraggingSchedule(null);
+        setDragPreview(null);
+      }
     });
   };
 
@@ -430,9 +509,12 @@ const BerthGantt = () => {
         className="gantt-container"
         ref={ganttRef}
         style={{ flex: 1 }}
-        onMouseMove={(e) => draggingSchedule && handleDragEnd(e)}
+        onMouseMove={(e) => draggingSchedule && handleDragMove(e)}
         onMouseUp={(e) => draggingSchedule && handleDragEnd(e)}
-        onMouseLeave={() => setDraggingSchedule(null)}
+        onMouseLeave={() => {
+          setDraggingSchedule(null);
+          setDragPreview(null);
+        }}
       >
         <div className="gantt-header">
           <div className="gantt-resource-header">泊位</div>
@@ -472,7 +554,37 @@ const BerthGantt = () => {
             })}
           </div>
 
-          <div className="gantt-timeline-body" style={{ width: totalCells * cellWidth }}>
+          <div className="gantt-timeline-body" style={{ width: totalCells * cellWidth, position: 'relative' }}>
+            {dragPreview && dragPreview.targetTime && dragPreview.targetBerthId && (
+              <div
+                className={`drag-preview ${dragPreview.isValid ? 'valid' : 'invalid'}`}
+                style={{
+                  position: 'absolute',
+                  top: berths.findIndex(b => b.id === dragPreview.targetBerthId) * 60 + 5,
+                  left: Math.max(getCellLeft(dragPreview.targetTime), 0),
+                  width: getTaskWidth(schedules.find(s => s.id === dragPreview.scheduleId)!),
+                  height: 50,
+                  background: dragPreview.isValid 
+                    ? 'rgba(82, 196, 26, 0.5)' 
+                    : 'rgba(255, 77, 79, 0.5)',
+                  border: `2px dashed ${dragPreview.isValid ? '#52c41a' : '#ff4d4f'}`,
+                  borderRadius: 4,
+                  zIndex: 200,
+                  pointerEvents: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 600
+                }}
+              >
+                <Tooltip title={dragPreview.validationMessage}>
+                  <span>{dragPreview.isValid ? '释放确认放置' : dragPreview.validationMessage}</span>
+                </Tooltip>
+              </div>
+            )}
+            
             {berths.map((berth, berthIndex) => {
               const berthSchedules = getSchedulesByBerth(berth.id);
               return (
