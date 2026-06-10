@@ -1,0 +1,402 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.gantt-container {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+}
+
+.gantt-header {
+  display: flex;
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.gantt-resource-header {
+  min-width: 200px;
+  padding: 12px;
+  border-right: 1px solid #f0f0f0;
+  font-weight: 600;
+  background: #f5f5f5;
+}
+
+.gantt-timeline-header {
+  display: flex;
+  flex: 1;
+  position: relative;
+}
+
+.gantt-time-cell {
+  min-width: 80px;
+  padding: 8px 4px;
+  text-align: center;
+  border-right: 1px solid #f0f0f0;
+  font-size: 12px;
+  color: #666;
+}
+
+.gantt-body {
+  display: flex;
+}
+
+.gantt-resource-column {
+  min-width: 200px;
+  background: #fafafa;
+  border-right: 1px solid #f0f0f0;
+}
+
+.gantt-resource-row {
+  padding: 16px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  height: 70px;
+  display: flex;
+  align-items: center;
+}
+
+.gantt-timeline-body {
+  flex: 1;
+  position: relative;
+}
+
+.gantt-timeline-row {
+  position: relative;
+  height: 70px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.gantt-grid-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #f0f0f0;
+}
+
+.gantt-task {
+  position: absolute;
+  height: 50px;
+  top: 10px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  cursor: grab;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.gantt-task:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.gantt-task:active {
+  cursor: grabbing;
+}
+
+.gantt-task.dragging {
+  opacity: 0.8;
+  transform: scale(1.02);
+}
+
+.gantt-task.selected {
+  outline: 3px solid #1677ff;
+  outline-offset: 2px;
+}
+
+.gantt-task-content {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.gantt-task-warning {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #faad14;
+}
+
+.gantt-task-error {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff4d4f;
+}
+
+.gantt-current-time {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #ff4d4f;
+  z-index: 5;
+}
+
+.gantt-current-time::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff4d4f;
+}
+
+.status-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-pending {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+
+.status-berthing {
+  background: #fff7e6;
+  color: #fa8c16;
+}
+
+.status-working {
+  background: #f6ffed;
+  color: #52c41a;
+}
+
+.status-departed {
+  background: #f0f0f0;
+  color: #8c8c8c;
+}
+
+.status-cancelled {
+  background: #fff1f0;
+  color: #f5222d;
+}
+
+.status-delayed {
+  background: #fffbe6;
+  color: #faad14;
+}
+
+.conflict-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.conflict-error {
+  background: #fff1f0;
+  color: #f5222d;
+}
+
+.conflict-warning {
+  background: #fffbe6;
+  color: #faad14;
+}
+
+.conflict-info {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+
+.ship-form-container {
+  padding: 24px;
+  background: #fff;
+  border-radius: 8px;
+}
+
+.table-container {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.filter-bar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.page-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.action-bar {
+  display: flex;
+  gap: 8px;
+}
+
+.berth-card {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  background: #fff;
+  transition: all 0.3s;
+}
+
+.berth-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.berth-card.occupied {
+  border-left: 4px solid #ff4d4f;
+}
+
+.berth-card.available {
+  border-left: 4px solid #52c41a;
+}
+
+.berth-card.maintenance {
+  border-left: 4px solid #faad14;
+}
+
+.tide-chart-container {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.tide-chart {
+  height: 200px;
+  position: relative;
+}
+
+.tide-bar {
+  position: absolute;
+  bottom: 0;
+  width: 20px;
+  background: linear-gradient(to top, #1890ff, #69c0ff);
+  border-radius: 4px 4px 0 0;
+  transition: all 0.3s;
+}
+
+.tide-bar:hover {
+  background: linear-gradient(to top, #096dd9, #40a9ff);
+}
+
+.tide-label {
+  position: absolute;
+  bottom: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: #666;
+  white-space: nowrap;
+}
+
+.tide-value {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 600;
+  color: #1890ff;
+}
+
+.handover-summary {
+  background: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 16px;
+}
+
+.handover-section {
+  margin-bottom: 24px;
+}
+
+.handover-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.schedule-print {
+  background: #fff;
+  padding: 40px;
+  font-size: 14px;
+}
+
+.schedule-print-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.schedule-print-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.schedule-print-subtitle {
+  font-size: 14px;
+  color: #666;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  body {
+    overflow: visible;
+  }
+  
+  #root {
+    overflow: visible;
+  }
+}
